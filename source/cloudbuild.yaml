@@ -1,0 +1,26 @@
+steps:
+# Este paso corre las pruebas unitarias en la app
+- name: 'python:3.7-slim'
+  id: Test
+  entrypoint: /bin/sh
+  args:
+  - -c
+  - 'pip install flask && python test_app.py -v'
+
+# Este paso construye la imagen del contenedor.
+- name: 'gcr.io/cloud-builders/docker'
+  id: Build
+  args:
+  - 'build'
+  - '-t'
+  - 'gcr.io/$PROJECT_ID/kubernetes-cd-cloudbuild:$SHORT_SHA'
+  - '.'
+
+# En este paso colocamos la imagen en el Registro de contenedores
+# El PROJECT_ID y SHORT_SHA son variable automaticamente
+# remplazadas por Cloud Build.
+- name: 'gcr.io/cloud-builders/docker'
+  id: Push
+  args:
+  - 'push'
+  - 'gcr.io/$PROJECT_ID/kubernetes-cd-cloudbuild:$SHORT_SHA'

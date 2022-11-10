@@ -1,0 +1,33 @@
+steps:
+# En este paso desplegamos la nueva imagen de nuestro contenedor
+# en el cluster de Kubernetes llamado kubernetes-cd.
+- name: 'gcr.io/cloud-builders/kubectl'
+  id: Deploy
+  args:
+  - 'apply'
+  - '-f'
+  - 'kubernetes.yaml'
+  env:
+  - 'CLOUDSDK_COMPUTE_ZONE=us-central1-b'
+  - 'CLOUDSDK_CONTAINER_CLUSTER=kubernetes-cd'
+
+# En este paso aplicamos la s copias del manifest a la rama de producción
+# La variable COMMIT_SHA es automaticamente 
+# remplazada por Cloud Build
+- name: 'gcr.io/cloud-builders/git'
+  id: Copy to production branch
+  entrypoint: /bin/sh
+  args:
+  - '-c'
+  - |
+    set -x && \
+    # Configuramos Git para crear los commits con la cuenta de servicio Cloud Build 
+    git config user.email $(gcloud auth list --filter=status:ACTIVE --format='value(account)') && \
+    # Cambiamos a la rama de producción y copiamos el archivo kubernetes.yaml
+    git fetch origin production && git checkout production && \
+    git checkout $COMMIT_SHA kubernetes.yaml && \ 
+    # Actualizamos el archivo kubernetes con un mensaje descriptivo
+    git commit -m "Manifest from commit $COMMIT_SHA
+    $(git log --format=%B -n 1 $COMMIT_SHA)" && \
+    # Realizamos push a Cloud Source Repository
+    git push origin production

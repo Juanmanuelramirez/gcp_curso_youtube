@@ -1,0 +1,65 @@
+steps:
+# Este paso clona el repositorio kubernetes-cd-env
+- name: 'python:3.7-slim'
+  id: Test
+  entrypoint: /bin/sh
+  args:
+  - -c
+  - 'pip install flask && python test_app.py -v'
+
+# Este paso contruye la imagen del contenedor
+- name: 'gcr.io/cloud-builders/docker'
+  id: Build
+  args:
+  - 'build'
+  - '-t'
+  - 'gcr.io/$PROJECT_ID/kubernetes-cd-cloudbuild:$SHORT_SHA'
+  - '.'
+
+# Este paso coloca la imagen al registro de contenedores
+# El $PROJECT_ID y $SHORT_SHA' son variables que el sistema coloca automaticamente
+- name: 'gcr.io/cloud-builders/docker'
+  id: Push
+  args:
+  - 'push'
+  - 'gcr.io/$PROJECT_ID/kubernetes-cd-cloudbuild:$SHORT_SHA'
+# [END cloudbuild]	
+
+# [START cloudbuild-trigger-cd]
+# Este paso clona el repositorio kubernetes-cd-env
+- name: 'gcr.io/cloud-builders/gcloud'
+  id: Clone env repository
+  entrypoint: /bin/sh
+  args:
+  - '-c'
+  - |
+    gcloud source repos clone kubernetes-cd-env && \
+    cd kubernetes-cd-env && \
+    git checkout candidate && \
+    git config user.email $(gcloud auth list --filter=status:ACTIVE --format='value(account)')
+
+# Este paso genera los nuevos archivos Manifest 
+- name: 'gcr.io/cloud-builders/gcloud'
+  id: Generate manifest
+  entrypoint: /bin/sh
+  args:
+  - '-c'
+  - |
+     sed "s/GOOGLE_CLOUD_PROJECT/${PROJECT_ID}/g" kubernetes.yaml.tpl | \
+     sed "s/COMMIT_SHA/${SHORT_SHA}/g" > kubernetes-cd-env/kubernetes.yaml
+
+# Este paso coloca los archivos Manifest en el repositorio kubernetes-cd-env
+- name: 'gcr.io/cloud-builders/gcloud'
+  id: Push manifest
+  entrypoint: /bin/sh
+  args:
+  - '-c'
+  - |
+    set -x && \
+    cd kubernetes-cd-env && \
+    git add kubernetes.yaml && \
+    git commit -m "Deploying image gcr.io/${PROJECT_ID}/kubernetes-cd-cloudbuild:${SHORT_SHA}
+    Built from commit ${COMMIT_SHA} of repository kubernetes-cd-app
+    Author: $(git log --format='%an <%ae>' -n 1 HEAD)" && \
+    git push origin candidate
+# [END cloudbuild-trigger-cd]
